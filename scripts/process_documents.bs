@@ -1,0 +1,31 @@
+#!/bin/bash
+# $1 - document path
+# $2 - document collection
+TAG_CLEANING_SQL="sql/clean_tags.sql"
+TEMP_GNORMPLUS="/home/kroll/datasets/gnormplus_temp.json"
+
+
+echo $1
+echo $2
+
+# Load everything
+python3 ~/NarrativeIntelligence/lib/KGExtractionToolbox/src/kgextractiontoolbox/document/load_document.py $1 -c $2 --artificial_document_ids
+
+# Next, tag the documents with our PharmDictTagger
+python3 ~/NarrativeIntelligence/lib/NarrativeAnnotation/src/narrant/preprocessing/dictpreprocess.py -c $2 --workers 32
+#--sections
+
+
+# Export the document content
+python3 ~/NarrativeIntelligence/lib/KGExtractionToolbox/src/kgextractiontoolbox/document/export.py -d $TEMP_GNORMPLUS --collection $2 --format json
+
+# Run GNormPlus
+python3 ~/NarrativeIntelligence/lib/KGExtractionToolbox/src/kgextractiontoolbox/entitylinking/biomedical_entity_linking.py $TEMP_GNORMPLUS -c $2 --skip-load --workers 12 --gnormplus
+
+# Execute Cleaning Rules for Tagging
+echo 'cleaning Tag table with hand-written rules'
+psql "host=127.0.0.1 port=5432 dbname=ranking user=USER password=PW" -f $TAG_CLEANING_SQL
+
+# Do the statement extraction for all $2 documents via our Pipeline
+python3 ~/NarrativeIntelligence/src/narraint/extraction/pharmaceutical_pipeline.py -c $2 -et PathIE --workers 26 --relation_vocab /home/kroll/NarrativeIntelligence/resources/pharm_relation_vocab.json
+# --sections

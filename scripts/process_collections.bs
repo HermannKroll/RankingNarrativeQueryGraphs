@@ -1,0 +1,42 @@
+#!/bin/bash
+
+VACUUM_SQL="sql/vacuum_db.sql"
+PREDICATION_CLEANING_SQL="sql/clean_predication.sql"
+
+
+bash process_documents.bs /home/kroll/datasets/clinicaltrials_trec-pm-2017.jsonl trec-pm-2017
+bash process_documents.bs /home/kroll/datasets/clinicaltrials_trec-pm-2018.jsonl trec-pm-2018-cds
+bash process_documents.bs /home/kroll/datasets/clinicaltrials_trec-pm-2019.jsonl trec-pm-2019-cds
+
+bash process_documents.bs /home/kroll/datasets/pm2017_extra_documents.json trec-pm-201X-extra
+bash process_documents.bs /home/kroll/datasets/trec_covid_round5_abstract.json trec_covid_round5_abstract
+
+# bash process_documents.bs /home/kroll/datasets/trec_covid_round5_abstract_fulltext.json trec_covid_round5_abstract_fulltext
+
+
+
+# Do the canonicalizing step & Apply the rules
+python3 ~/NarrativeIntelligence/lib/KGExtractionToolbox/src/kgextractiontoolbox/cleaning/canonicalize_predicates.py -c trec-pm-2017  --word2vec_model /home/kroll/workingdir/BioWordVec_PubMed_MIMICIII_d200.bin --relation_vocab ~/NarrativeIntelligence/resources/pharm_relation_vocab.json
+python3 ~/NarrativeIntelligence/lib/KGExtractionToolbox/src/kgextractiontoolbox/cleaning/canonicalize_predicates.py -c trec-pm-2018-cds  --word2vec_model /home/kroll/workingdir/BioWordVec_PubMed_MIMICIII_d200.bin --relation_vocab ~/NarrativeIntelligence/resources/pharm_relation_vocab.json
+python3 ~/NarrativeIntelligence/lib/KGExtractionToolbox/src/kgextractiontoolbox/cleaning/canonicalize_predicates.py -c trec-pm-2019-cds  --word2vec_model /home/kroll/workingdir/BioWordVec_PubMed_MIMICIII_d200.bin --relation_vocab ~/NarrativeIntelligence/resources/pharm_relation_vocab.json
+python3 ~/NarrativeIntelligence/lib/KGExtractionToolbox/src/kgextractiontoolbox/cleaning/canonicalize_predicates.py -c trec-pm-201X-extra  --word2vec_model /home/kroll/workingdir/BioWordVec_PubMed_MIMICIII_d200.bin --relation_vocab ~/NarrativeIntelligence/resources/pharm_relation_vocab.json
+python3 ~/NarrativeIntelligence/lib/KGExtractionToolbox/src/kgextractiontoolbox/cleaning/canonicalize_predicates.py -c trec_covid_round5_abstract  --word2vec_model /home/kroll/workingdir/BioWordVec_PubMed_MIMICIII_d200.bin --relation_vocab ~/NarrativeIntelligence/resources/pharm_relation_vocab.json
+
+
+
+python3 ~/NarrativeIntelligence/src/narraint/cleaning/pharmaceutical_rules.py -c trec-pm-2017
+python3 ~/NarrativeIntelligence/src/narraint/cleaning/pharmaceutical_rules.py -c trec-pm-2018-cds
+python3 ~/NarrativeIntelligence/src/narraint/cleaning/pharmaceutical_rules.py -c trec-pm-2019-cds
+python3 ~/NarrativeIntelligence/src/narraint/cleaning/pharmaceutical_rules.py -c trec-pm-201X-extra
+python3 ~/NarrativeIntelligence/src/narraint/cleaning/pharmaceutical_rules.py -c trec_covid_round5_abstract
+
+
+# Execute Cleaning Rules for Predications
+echo 'cleaning predication table with hand-written rules'
+psql "host=127.0.0.1 port=5432 dbname=ranking user=USER password=PW" -f $PREDICATION_CLEANING_SQL
+
+# Finally vacuum all tables
+# Execute Cleaning Rules for Tagging
+echo 'vacuum db tables...'
+psql "host=127.0.0.1 port=5432 dbname=ranking user=USER password=PW" -f $VACUUM_SQL
+
