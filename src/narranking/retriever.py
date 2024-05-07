@@ -7,11 +7,11 @@ from kgextractiontoolbox.backend.models import Document, Tag, Predication
 from kgextractiontoolbox.backend.retrieve import iterate_over_all_documents_in_collection
 from kgextractiontoolbox.document.document import TaggedEntity
 from narraint.backend.database import SessionExtended
-from narraint.document.narrative_document import NarrativeDocument, StatementExtraction
+from kgextractiontoolbox.document.narrative_document import NarrativeDocument, StatementExtraction
 from narrant.entity.entityresolver import GeneResolver
-from narrant.preprocessing.enttypes import GENE
-from narranking.document import AnalyzedNarrativeDocument
-from narranking.translator import DocumentTranslator
+from narrant.entitylinking.enttypes import GENE
+from narraplay.documentranking.document import AnalyzedNarrativeDocument
+from narraplay.documentranking.translator import DocumentTranslator
 
 
 def retrieve_narrative_documents_from_database_small(session, document_ids: Set[int], document_collection: str) \
@@ -33,6 +33,10 @@ def retrieve_narrative_documents_from_database_small(session, document_ids: Set[
     for res in doc_query:
         doc_results[res.id] = NarrativeDocument(document_id=res.id, title=res.title, abstract=res.abstract)
 
+    if len(doc_results) != len(document_ids):
+        diff = document_ids - doc_results.keys()
+        raise ValueError(f'Did not retrieve all required {document_collection} documents (missed ids: {diff})')
+
     #  logging.info('Querying for tags...')
     # Next query for all tagged entities in that document
     tag_query = session.query(Tag).filter(and_(Tag.document_id.in_(document_ids),
@@ -51,8 +55,11 @@ def retrieve_narrative_documents_from_database_small(session, document_ids: Set[
 
     # logging.info('Querying for statement extractions...')
     # Next query for extracted statements
-    es_query = session.query(Predication).filter(and_(Predication.document_id.in_(document_ids),
-                                                      Predication.document_collection == document_collection))
+    es_query = session.query(Predication)
+    es_query = es_query.filter(Predication.document_collection == document_collection)
+    es_query = es_query.filter(Predication.document_id.in_(document_ids))
+    es_query = es_query.filter(Predication.relation != None)
+
     es_for_doc = defaultdict(list)
     sentence_ids = set()
     sentenceid2doc = defaultdict(set)
@@ -103,8 +110,28 @@ class DocumentRetriever:
         return doc_texts
 
     def retrieve_narrative_documents_for_collections(self, document_ids: [str], document_collections: [str]):
-        for collection in document_collections:
-            yield from self.retrieve_narrative_documents(document_ids, collection)
+        # This trick does work because the collections have different document ids,
+        # i.e. each id belongs to a unique collection
+        if len(document_collections) == 1:
+            yield from self.retrieve_narrative_documents(document_ids, document_collections[0])
+        elif len(document_collections) == 2:
+            # multiple collections are queried. divide ids for each collection
+            # hack: pubmed ids are integers. other ids are not integers
+            assert "PubMed" in document_collections
+            pubmed_ids = []
+            other_ids = []
+            for did in document_ids:
+                try:
+                    pubmed_ids.append(int(did))
+                except ValueError:
+                    other_ids.append(did)
+
+            # get the name of the other collection
+            c = [dc for dc in document_collections if dc != "PubMed"][0]
+            yield from self.retrieve_narrative_documents(pubmed_ids, "PubMed")
+            yield from self.retrieve_narrative_documents(other_ids, c)
+        else:
+            raise ValueError(f'Do not support retrieval from {len(document_collections)} collections')
 
     def retrieve_narrative_documents(self, document_ids: [str], document_collection: str, translate_ids=True) -> List[
         AnalyzedNarrativeDocument]:
@@ -146,6 +173,7 @@ class DocumentRetriever:
 
         remaining_document_ids = document_ids - found_ids
         if len(remaining_document_ids) == 0:
+            assert len(narrative_documents) == len(document_ids)
             return narrative_documents
         narrative_documents_queried = retrieve_narrative_documents_from_database_small(session=self.session,
                                                                                        document_ids=remaining_document_ids,
@@ -167,6 +195,7 @@ class DocumentRetriever:
 
         # add them to list
         narrative_documents.extend(narrative_documents_queried)
+        assert len(narrative_documents) == len(document_ids)
         return narrative_documents
 
     def __translate_gene_ids_to_symbols(self, document: NarrativeDocument):
@@ -197,4 +226,8 @@ class DocumentRetriever:
                                                                 ent_type=GENE))
                     except (KeyError, ValueError):
                         pass
+
+        # remove all gene types
+        document.tags = [t for t in document.tags if t.ent_type != GENE]
+        # add translated genes
         document.tags.extend(translated_gene_ids)

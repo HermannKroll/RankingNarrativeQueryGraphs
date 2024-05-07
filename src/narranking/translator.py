@@ -1,3 +1,5 @@
+from typing import List
+
 from kgextractiontoolbox.backend.models import DocumentTranslation
 from kgextractiontoolbox.backend.database import Session
 
@@ -17,27 +19,31 @@ class DocumentTranslator:
             source2art = {}
             art2source = {}
             for r in query:
+                # Check whether mapping is unique (1:1 mapping between source and db ids)
+                assert r.document_id not in art2source
+                assert r.source_doc_id not in source2art
+
                 art2source[r.document_id] = r.source_doc_id
                 source2art[r.source_doc_id] = r.document_id
 
             self.__doc_translation_source2art[document_collection] = source2art
             self.__doc_translation_art2source[document_collection] = art2source
 
-    def translate_document_ids_art2source(self, document_ids: [int], document_collection: str):
+    def translate_document_ids_art2source(self, document_ids: [int], document_collection: str) -> List[str]:
         # Hack for PubMed
         if document_collection == "PubMed":
-            return {str(d) for d in document_ids}
+            return [str(d) for d in document_ids]
         self.__cache_document_translation(document_collection)
         art2source = self.__doc_translation_art2source[document_collection]
-        return [art2source[int(d)] for d in document_ids if int(d) in art2source]
+        return [art2source[int(d)] for d in document_ids]
 
-    def translate_document_id_art2source(self, document_id: str, document_collection: str):
+    def translate_document_id_art2source(self, document_id: int, document_collection: str) -> str:
         # Hack for PubMed
         if document_collection == "PubMed":
-            return int(document_id)
+            return str(document_id)
         return self.translate_document_ids_art2source([document_id], document_collection)[0]
 
-    def translate_document_ids_source2art(self, document_ids: [str], document_collection: str):
+    def translate_document_ids_source2art(self, document_ids: [str], document_collection: str) -> List[int]:
         self.__cache_document_translation(document_collection)
         source2art = self.__doc_translation_source2art[document_collection]
-        return [source2art[d] for d in document_ids if d in source2art]
+        return [int(source2art[d]) for d in document_ids]

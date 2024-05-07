@@ -6,8 +6,10 @@ import nltk
 
 from narraint.frontend.entity.entitytagger import EntityTagger
 from narrant.entity.entity import Entity
-from narranking.benchmark import Topic
-from narranking.document import AnalyzedNarrativeDocument
+from narraplay.documentranking.benchmark import Topic
+from narraplay.documentranking.document import AnalyzedNarrativeDocument
+from narraplay.documentranking.entity_tagger_like import EntityTaggerLike
+from narraplay.documentranking.entity_tagger_like_ont import EntityTaggerLikeOnt
 
 stopwords = set(nltk.corpus.stopwords.words('english'))
 trans_map = {p: ' ' for p in '[]()?!'}  # PUNCTUATION}
@@ -16,31 +18,89 @@ translator = str.maketrans(trans_map)
 
 class AnalyzedQuery:
 
-    def __init__(self, topic: Topic, concept_strategy):
+    def __init__(self, topic: Topic, concept_strategy, translate_query=True):
         self.topic = topic
+
+        if not translate_query:
+            return
+
         self.concept_strategy = concept_strategy
         self.concepts = set()
         self.partial_concepts = list()
-        self.tagger = EntityTagger.instance()
+        self.concept2score = dict()
+        if concept_strategy in ["exact", "expanded", "hybrid"]:
+            self.tagger = EntityTagger()
+        elif concept_strategy in ["likesimilarity"]:
+            self.taggerV2 = EntityTaggerLike.instance()
+        elif concept_strategy in ["likesimilarityontology"]:
+            self.taggerV2 = EntityTaggerLikeOnt.instance()
+        else:
+            raise ValueError(f"{concept_strategy} concept strategy is not supported")
         self.component2concepts = dict()
+        self.component2concepts_with_type = dict()
         for and_component in self.topic.get_query_components():
             concepts_for_component = set()
+            concepts_with_type_for_component = set()
             comp_names = []
             for or_component, or_concept_type_constraints in and_component:
                 comp_names.append(or_component)
-                concepts = self.__greedy_find_concepts_in_keywords(or_component)
+
+                if concept_strategy in ["exact", "expanded", "hybrid"]:
+                    concepts = self.__greedy_find_concepts_in_keywords_v1(or_component)
+                elif concept_strategy in ["likesimilarity", "likesimilarityontology"]:
+                    concepts = self.__greedy_find_concepts_in_keywords_v2(or_component)
+                    for c in concepts:
+                        if c.entity_id not in self.concept2score:
+                            self.concept2score[c.entity_id] = c.score
+                        else:
+                            # concept is only as good as the best found translation
+                            self.concept2score[c.entity_id] = max(self.concept2score[c.entity_id], c.score)
+                else:
+                    raise ValueError(f"{concept_strategy} concept strategy is not supported")
+
                 if or_concept_type_constraints:
                     # Filter by constraints and only keep ids
+                    concepts_with_type = set([c for c in concepts if c.entity_type in or_concept_type_constraints])
                     concepts = set([c.entity_id for c in concepts if c.entity_type in or_concept_type_constraints])
                 else:
+                    concepts_with_type = set(concepts)
                     concepts = set([c.entity_id for c in concepts])
                 self.concepts.update(concepts)
                 concepts_for_component.update(concepts)
+                concepts_with_type_for_component.update(concepts_with_type)
 
             self.partial_concepts.append(concepts_for_component)
             component_str = ' || '.join(sorted([c for c in comp_names]))
             self.component2concepts[component_str] = list(concepts_for_component)
-        self.partial_weight = 1 / len(self.partial_concepts)
+            self.component2concepts_with_type[component_str] = list(concepts_with_type_for_component)
+
+        if len(self.partial_concepts) > 0:
+            self.partial_weight = 1 / len(self.partial_concepts)
+        else:
+            self.partial_weight = 0.0
+
+        # all concepts have the same score
+        if concept_strategy in ["exact", "expanded", "hybrid"]:
+            for c in self.concepts:
+                self.concept2score[c] = 1.0
+
+    def get_query_translation_score(self):
+        # we did not translate all components
+        if len(list(self.topic.get_query_components())) > len(self.component2concepts):
+            return 0.0
+        if self.concept_strategy in ["likesimilarity", "likesimilarityontology"]:
+            # find the best translation for each component
+            max_trans_scores = []
+            for component, concepts in self.component2concepts_with_type.items():
+                if concepts:
+                    max_trans_scores.append(max([e.score for e in concepts]))
+                else:
+                    max_trans_scores.append(0.0)
+
+            # query is as good as its worst translation
+            return min(max_trans_scores)
+        else:
+            return 1.0
 
     def get_statistics(self):
         return dict(topic=str(self.topic), component2concepts=self.component2concepts)
@@ -117,10 +177,16 @@ class AnalyzedQuery:
                     statements_per_document=statements_per_document, query_comps_in_documents=query_comps_in_documents,
                     connected_query_comps_in_documents=connected_query_comps_in_documents)
 
+    def __greedy_find_concepts_in_keywords_v2(self, concept_name):
+        try:
+            return self.taggerV2.tag_entity(concept_name)
+        except KeyError:
+            return []
+
     def __find_entities_in_string(self, concept_name):
-        if self.concept_strategy == "exac":
+        if self.concept_strategy == "exact":
             return self.tagger.tag_entity(concept_name, expand_search_by_prefix=False)
-        elif self.concept_strategy == "expc":
+        elif self.concept_strategy == "expanded":
             return self.tagger.tag_entity(concept_name, expand_search_by_prefix=True)
         elif self.concept_strategy == "hybrid":
             try:
@@ -128,7 +194,13 @@ class AnalyzedQuery:
             except KeyError:
                 return self.tagger.tag_entity(concept_name, expand_search_by_prefix=True)
 
-    def __greedy_find_concepts_in_keywords(self, keywords) -> Set[Entity]:
+    def __greedy_find_concepts_in_keywords_v1(self, keywords) -> Set[Entity]:
+        try:
+            return self.__find_entities_in_string(keywords)
+        except KeyError:
+            return set()
+
+    def __greedy_find_concepts_in_keywords_with_search(self, keywords) -> Set[Entity]:
         resulting_concepts = set()
         try:
             entities_in_part = self.__find_entities_in_string(keywords)
