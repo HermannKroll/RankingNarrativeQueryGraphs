@@ -1,0 +1,12 @@
+[submodule "lib/NarrativeIntelligence"]
+	path = lib/NarrativeIntelligence
+	url = https://github.com/HermannKroll/NarrativeIntelligence.git
+	branch = dev
+[submodule "lib/NarrativeAnnotation"]
+	path = lib/NarrativeAnnotation
+	url = https://github.com/HermannKroll/NarrativeAnnotation.git
+	branch = dev
+[submodule "lib/KGExtractionToolbox"]
+	path = lib/KGExtractionToolbox
+	url = https://github.com/HermannKroll/KGExtractionToolbox.git
+	branch = dev
