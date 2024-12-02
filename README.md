@@ -1,5 +1,6 @@
 # Graph-based Ranking Methods for Biomedical Document Retrieval
-This repository belongs to our TPDL2024 submission. 
+This repository belongs to our publication at [AI4LAC@JCDL2024](https://zhanghaoxuan1999.github.io/JCDL2024-AI4LAC-workshop/) workshop publication. You find a short version of our article on the workshop webpage and a technical report (long version) at arXiv.
+
 Thank you for being here. 
 This repository is still updated.
 
