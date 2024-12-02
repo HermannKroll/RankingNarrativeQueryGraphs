@@ -2,7 +2,7 @@
 This repository belongs to our workshop publication at [AI4LAC@JCDL2024](https://zhanghaoxuan1999.github.io/JCDL2024-AI4LAC-workshop/). You find a short version of our article on the workshop webpage and a technical report (long version) at arXiv. The links will be added as soon as they are available. 
 
 This repository contains graph-based ranking methods for our Narrative Service.
-Please note that the repository has a dependency to our [Narrative Service](www.narrative.pubpharm.de) whose code is publicly available on [GitHub](https://github.com/HermannKroll/NarrativeIntelligence). 
+Please note that the repository has a dependency to our [Narrative Service](https://www.narrative.pubpharm.de/) whose code is publicly available on [GitHub](https://github.com/HermannKroll/NarrativeIntelligence). 
 Unfortunately, we cannot publish the pre-processed document data (the extracted graph information).
 
 # Documentation
