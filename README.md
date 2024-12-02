@@ -1,4 +1,4 @@
-# Graph-based Ranking Methods for Biomedical Document Retrieval
+# Ranking Narrative Query Graphs for Biomedical Document Retrieval
 This repository belongs to our workshop publication at [AI4LAC@JCDL2024](https://zhanghaoxuan1999.github.io/JCDL2024-AI4LAC-workshop/). You find a short version of our article on the workshop webpage and a technical report (long version) at arXiv. The links will be added as sonn as they are available. 
 
 This repository contains graph-based ranking methods for our Narrative Service.
